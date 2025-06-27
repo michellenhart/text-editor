@@ -2,9 +2,9 @@
 Instalar biblioteca:
 	sudo apt-get install libgtk-3-dev
 Compilar:
-    mpicc editor_colaborativo.c -o editor_colaborativo -fopenmp `pkg-config --cflags --libs gtk+-3.0`
+    mpicc editor-colaborativo.c -o editor-colaborativo -fopenmp pkg-config --cflags --libs gtk+-3.0
 Executar:
-    mpirun -np 2 ./editor_colaborativo
+    mpirun -np 2 ./editor-colaborativo
     (1 servidor - rank 0, 1 cliente - rank 1)
 */
 
@@ -82,9 +82,13 @@ void handle_server(int comm_size) {
                     document[msg.line_no].locked_by = msg.sender_rank;
                     reply.type = MSG_LINE_GRANTED;
 					reply.sender_rank = 0;
+                    // Log
+                    printf("[LOG] Usuario %d reservou a linha %d\n", msg.sender_rank, msg.line_no + 1);
                 } else {
                     reply.type = MSG_LINE_DENIED;
 					reply.sender_rank = document[msg.line_no].locked_by; // quem está editando
+                    // Log
+                    printf("[LOG] Usuario %d tentou reservar a linha %d, mas ela está ocupada por Usuario %d\n", msg.sender_rank, msg.line_no + 1, document[msg.line_no].locked_by);
                 }
                 reply.line_no = msg.line_no;
                 //reply.sender_rank = 0;
@@ -97,25 +101,41 @@ void handle_server(int comm_size) {
                     {
                         strncpy(document[msg.line_no].text, msg.text, MAX_LINE_LENGTH);
                     }
+                    // Log
+                    printf("[LOG] Usuario %d editou linha %d: \"%s\"\n", msg.sender_rank, msg.line_no + 1, msg.text);
+    
                     // Broadcast nova linha a todos, inclusive quem editou!
                     reply = msg;
                     for (int dest = 1; dest < comm_size; dest++) {
                         MPI_Send(&reply, sizeof(reply), MPI_BYTE, dest, 0, MPI_COMM_WORLD);
                     }
+                } else {
+                    // Log
+                    printf("[LOG] Usuario %d tentou editar linha %d sem possuir o bloqueio\n", msg.sender_rank, msg.line_no + 1);
                 }
                 break;
 
             case MSG_LINE_RELEASE:
                 if (document[msg.line_no].locked_by == msg.sender_rank) {
                     document[msg.line_no].locked_by = -1;
+                    // Log
+                    printf("[LOG] Usuario %d liberou a linha %d\n", msg.sender_rank, msg.line_no + 1);
+                } else {
+                    // Log
+                    printf("[LOG] Usuario %d tentou liberar linha %d sem possuir o bloqueio\n", msg.sender_rank, msg.line_no + 1);
                 }
                 break;
 
+
             case MSG_CHAT_PRIVATE:
+                // Log
+                printf("[LOG] Usuario %d enviou mensagem privada para Usuario %d: \"%s\"\n", msg.sender_rank, msg.target_rank, msg.text);
                 MPI_Send(&msg, sizeof(msg), MPI_BYTE, msg.target_rank, 0, MPI_COMM_WORLD);
                 break;
 
             case MSG_GEN_DATA:
+                // Log
+                printf("[LOG] Usuario %d solicitou geração automática de dados.\n", msg.sender_rank);
                 #pragma omp parallel for
                 for (int i = 0; i < MAX_LINES; i++)
                     snprintf(document[i].text, MAX_LINE_LENGTH, "Linha %d: Dado gerado automaticamente", i+1);

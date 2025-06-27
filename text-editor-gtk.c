@@ -1,8 +1,8 @@
 /*
 Compilar:
-    mpicc editor_colaborativo.c -o editor_colaborativo -fopenmp `pkg-config --cflags --libs gtk+-3.0`
+    mpicc editor-colaborativo.c -o editor-colaborativo -fopenmp pkg-config --cflags --libs gtk+-3.0
 Executar:
-    mpirun -np 2 ./editor_colaborativo
+    mpirun -np 2 ./editor-colaborativo
     (1 servidor - rank 0, 1 cliente - rank 1)
 */
 
