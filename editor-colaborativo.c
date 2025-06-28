@@ -292,50 +292,53 @@ void run_listener(ClientState *state) {
     MPI_Status status;
     while (1) {
         int flag = 0;
+        // Serve para consultar se há uma mensagem chegando para o destino.
+        // flag retorna 1 se há.
         MPI_Iprobe(0, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
-        if (flag) {
-            MPI_Recv(&msg, sizeof(msg), MPI_BYTE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            switch (msg.type) {
-                case MSG_TEXT_FULL:
-                    strncpy(state->document[msg.line_no], msg.text, MAX_LINE_LENGTH);
-                    g_idle_add(gui_update_text_view, state);
-                    break;
-                case MSG_LINE_EDIT:
-                    strncpy(state->document[msg.line_no], msg.text, MAX_LINE_LENGTH);
-                    g_idle_add(gui_update_text_view, state);
-                    break;
-                case MSG_LINE_GRANTED:
-                    state->editing_line = msg.line_no;
-					snprintf(state->status_buf, sizeof(state->status_buf), "%s reservou a linha %d.", state->username, state->editing_line+1);
-                    g_idle_add(gui_set_status, state);
-                    // Somente se foi solicitação do usuário atual
-                    if (state->waiting_line_response && state->pending_line_no == msg.line_no) {
-                        state->waiting_line_response = 0;
-                        // Chama dialog para editar texto da linha
-                        g_idle_add(open_edit_text_dialog, state);
-                    }
-                    break;
-                case MSG_LINE_DENIED:
-                    snprintf(state->status_buf, sizeof(state->status_buf), "Linha %d está sendo editada por outro usuário.", msg.line_no+1);
-                    char locking_user[32];
-					snprintf(locking_user, sizeof(locking_user), "Usuario%d", msg.sender_rank);
-					snprintf(state->status_buf, sizeof(state->status_buf), "Linha %d está sendo editada por %s.", msg.line_no+1, locking_user);
-					g_idle_add(gui_set_status, state);
-                    state->waiting_line_response = 0;
-                    break;
-                case MSG_CHAT_PRIVATE:
-                    char sender_name[32];
-					snprintf(sender_name, sizeof(sender_name), "Usuario%d", msg.sender_rank);
-					int prefix_len = snprintf(state->status_buf, sizeof(state->status_buf), "[%s → Você] ", sender_name);
-					int max_text_len = sizeof(state->status_buf) - prefix_len - 1;
-					strncat(state->status_buf, msg.text, max_text_len);
-                    g_idle_add(gui_set_status, state);
-                    break;
-                default:
-                    break;
-            }
-        } else {
+        if (!flag) {
             g_usleep(5000); // 5 ms
+            continue;            
+        }
+
+        MPI_Recv(&msg, sizeof(msg), MPI_BYTE, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        switch (msg.type) {
+            case MSG_TEXT_FULL:
+                strncpy(state->document[msg.line_no], msg.text, MAX_LINE_LENGTH);
+                g_idle_add(gui_update_text_view, state);
+                break;
+            case MSG_LINE_EDIT:
+                strncpy(state->document[msg.line_no], msg.text, MAX_LINE_LENGTH);
+                g_idle_add(gui_update_text_view, state);
+                break;
+            case MSG_LINE_GRANTED:
+                state->editing_line = msg.line_no;
+                snprintf(state->status_buf, sizeof(state->status_buf), "%s reservou a linha %d.", state->username, state->editing_line+1);
+                g_idle_add(gui_set_status, state);
+                // Somente se foi solicitação do usuário atual
+                if (state->waiting_line_response && state->pending_line_no == msg.line_no) {
+                    state->waiting_line_response = 0;
+                    // Chama dialog para editar texto da linha
+                    g_idle_add(open_edit_text_dialog, state);
+                }
+                break;
+            case MSG_LINE_DENIED:
+                snprintf(state->status_buf, sizeof(state->status_buf), "Linha %d está sendo editada por outro usuário.", msg.line_no+1);
+                char locking_user[32];
+                snprintf(locking_user, sizeof(locking_user), "Usuario%d", msg.sender_rank);
+                snprintf(state->status_buf, sizeof(state->status_buf), "Linha %d está sendo editada por %s.", msg.line_no+1, locking_user);
+                g_idle_add(gui_set_status, state);
+                state->waiting_line_response = 0;
+                break;
+            case MSG_CHAT_PRIVATE:
+                char sender_name[32];
+                snprintf(sender_name, sizeof(sender_name), "Usuario%d", msg.sender_rank);
+                int prefix_len = snprintf(state->status_buf, sizeof(state->status_buf), "[%s → Você] ", sender_name);
+                int max_text_len = sizeof(state->status_buf) - prefix_len - 1;
+                strncat(state->status_buf, msg.text, max_text_len);
+                g_idle_add(gui_set_status, state);
+                break;
+            default:
+                break;
         }
     }
 }
@@ -408,7 +411,7 @@ void setup_gui(ClientState *state, int argc, char **argv) {
     GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
     gtk_widget_set_size_request(scrolled, 260, 80); // Reduzido
     gtk_container_add(GTK_CONTAINER(scrolled), state->text_view);
-    gtk_box_pack_start(GTK_BOX(vbox), scrolled, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
 
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 
@@ -448,6 +451,7 @@ void setup_gui(ClientState *state, int argc, char **argv) {
     gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 
     state->label_status = gtk_label_new("Pronto.");
+    gtk_widget_set_margin_bottom(state->label_status, 8);
     gtk_box_pack_start(GTK_BOX(vbox), state->label_status, FALSE, FALSE, 0);
 
     gtk_widget_show_all(state->window);
